@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Game</title>
+<style>
+body{display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:linear-gradient(135deg,#dbeafe,#60a5fa,#2563eb);color:white;font-family:'Segoe UI',sans-serif;flex-direction:column;overflow:hidden}
+canvas{background:#020617;border-radius:16px;box-shadow:0 20px 40px rgba(0,0,0,0.6)}
+#score{margin-bottom:12px;font-size:22px;font-weight:600}
+.overlay{position:absolute;background:rgba(15,23,42,0.95);backdrop-filter:blur(10px);padding:30px;border-radius:20px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.7)}
+button{margin-top:15px;padding:10px 20px;border:none;border-radius:10px;background:#22c55e;color:white;font-size:16px;cursor:pointer;transition:.2s}
+button:hover{background:#16a34a;transform:scale(1.05)}
+.shake{animation:shake .2s}
+
+/* NEW: back link styling */
+.back-link{
+margin-bottom:10px;
+color:#0f172a;
+text-decoration:none;
+font-weight:600;
+background:white;
+padding:6px 12px;
+border-radius:8px;
+transition:0.2s;
+}
+.back-link:hover{
+background:#e2e8f0;
+}
+
+@keyframes shake{0%{transform:translate(2px,2px)}25%{transform:translate(-2px,2px)}50%{transform:translate(2px,-2px)}75%{transform:translate(-2px,-2px)}100%{transform:translate(0,0)}}
+</style>
+</head>
+<body>
+
+<div id="score">Score: 0</div>
+
+<!-- NEW: Back to scratch page link -->
+<a href="fromScratch.html" class="back-link">← Back to BYU Basketball Page</a>
+
+<canvas id="game" width="400" height="400"></canvas>
+
+<div id="startScreen" class="overlay">
+<h2>Snake Game</h2>
+<p>High Score: <span id="highScore">0</span></p>
+<button onclick="startGame()">Start Game</button>
+</div>
+
+<div id="gameOverScreen" class="overlay" style="display:none;">
+<h2>Game Over</h2>
+<p>Your Score: <span id="finalScore"></span></p>
+<p>High Score: <span id="highScoreEnd"></span></p>
+<button onclick="restartGame()">Play Again</button>
+</div>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+const box=20;
+
+let snake, direction, food, score, game, obstacles, speed, particles=[];
+let powerup=null, powerupTimer=null, slowActive=false;
+
+const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+function playBeep(freq,dur){const o=audioCtx.createOscillator();const g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.frequency.value=freq;o.start();g.gain.exponentialRampToValueAtTime(0.00001,audioCtx.currentTime+dur);o.stop(audioCtx.currentTime+dur);} 
+
+let highScore=localStorage.getItem("snakeHighScore")||0;
+document.getElementById("highScore").innerText=highScore;
+
+function init(){snake=[{x:200,y:200}];direction="RIGHT";food=randomFood();obstacles=[];particles=[];powerup=null;score=0;speed=100;slowActive=false;document.getElementById("score").innerText="Score: 0"}
+
+function startGame(){document.getElementById("startScreen").style.display="none";init();startPowerupSpawner();game=setInterval(draw,speed)}
+function restartGame(){document.getElementById("gameOverScreen").style.display="none";startGame()}
+
+function randomFood(){let type=Math.random()<0.6?"apple":"banana";return{x:Math.floor(Math.random()*(canvas.width/box))*box,y:Math.floor(Math.random()*(canvas.height/box))*box,type:type}}
+function spawnObstacle(){obstacles.push({x:Math.floor(Math.random()*(canvas.width/box))*box,y:Math.floor(Math.random()*(canvas.height/box))*box})}
+
+// POWERUP SPAWNER
+function startPowerupSpawner(){
+    if(powerupTimer) clearInterval(powerupTimer);
+    powerupTimer=setInterval(()=>{
+        if(score>=15 && !powerup){
+            powerup={x:Math.floor(Math.random()*(canvas.width/box))*box,y:Math.floor(Math.random()*(canvas.height/box))*box};
+        }
+    },15000);
+}
+
+function activateSlow(){
+    slowActive=true;
+    clearInterval(game);
+    game=setInterval(draw,speed*1.8);
+    setTimeout(()=>{
+        slowActive=false;
+        clearInterval(game);
+        game=setInterval(draw,speed);
+    },5000);
+}
+
+// INPUT
+document.addEventListener("keydown",e=>{if(e.keyCode===37&&direction!=="RIGHT")direction="LEFT";else if(e.keyCode===38&&direction!=="DOWN")direction="UP";else if(e.keyCode===39&&direction!=="LEFT")direction="RIGHT";else if(e.keyCode===40&&direction!=="UP")direction="DOWN"});
+
+let pulse=0;
+
+function createParticles(x,y,color){for(let i=0;i<10;i++){particles.push({x:x+10,y:y+10,dx:(Math.random()-0.5)*4,dy:(Math.random()-0.5)*4,life:20,color:color})}}
+function drawParticles(){particles.forEach(p=>{ctx.fillStyle=p.color;ctx.globalAlpha=p.life/20;ctx.fillRect(p.x,p.y,4,4);p.x+=p.dx;p.y+=p.dy;p.life--});particles=particles.filter(p=>p.life>0);ctx.globalAlpha=1}
+
+function draw(){pulse+=0.1;ctx.fillStyle="#020617";ctx.fillRect(0,0,canvas.width,canvas.height);
+
+// FOOD
+if(food.type==="apple"){ctx.fillStyle="#ef4444";ctx.beginPath();ctx.arc(food.x+10,food.y+10,8+Math.sin(pulse)*2,0,Math.PI*2);ctx.fill();ctx.fillStyle="#22c55e";ctx.fillRect(food.x+8,food.y-2,4,6)}
+else{ctx.fillStyle="#facc15";ctx.beginPath();ctx.ellipse(food.x+10,food.y+10,10,6+Math.sin(pulse)*1.5,0,0,Math.PI*2);ctx.fill()}
+
+// POWERUP DRAW
+if(powerup){ctx.fillStyle="#38bdf8";ctx.beginPath();ctx.arc(powerup.x+10,powerup.y+10,6+Math.sin(pulse)*2,0,Math.PI*2);ctx.fill();}
+
+// OBSTACLES
+ctx.fillStyle="#64748b";obstacles.forEach(o=>ctx.fillRect(o.x,o.y,box,box));
+
+// SNAKE
+snake.forEach((seg,i)=>{ctx.fillStyle=i===0?"#4ade80":"#22c55e";ctx.beginPath();ctx.roundRect(seg.x,seg.y,i===0?box:box-2,i===0?box:box-2,6);ctx.fill();
+if(i===0){ctx.fillStyle="white";let offsetX=0,offsetY=0;
+if(direction==="LEFT")offsetX=-2;
+if(direction==="RIGHT")offsetX=2;
+if(direction==="UP")offsetY=-2;
+if(direction==="DOWN")offsetY=2;
+ctx.beginPath();ctx.arc(seg.x+6+offsetX,seg.y+6+offsetY,2,0,Math.PI*2);
+ctx.arc(seg.x+14+offsetX,seg.y+6+offsetY,2,0,Math.PI*2);
+ctx.fill();}}
+);
+
+let headX=snake[0].x;let headY=snake[0].y;
+if(direction==="LEFT")headX-=box;
+if(direction==="UP")headY-=box;
+if(direction==="RIGHT")headX+=box;
+if(direction==="DOWN")headY+=box;
+
+if(headX<0||headY<0||headX>=canvas.width||headY>=canvas.height)return endGame();
+if(obstacles.some(o=>o.x===headX&&o.y===headY))return endGame();
+
+// POWERUP COLLISION
+if(powerup && headX===powerup.x && headY===powerup.y){
+    playBeep(600,0.2);
+    activateSlow();
+    powerup=null;
+}
+
+let points=food.type==="apple"?1:2;
+
+if(headX===food.x&&headY===food.y){
+score+=points;playBeep(400,0.1);
+document.getElementById("score").innerText="Score: "+score;
+createParticles(food.x,food.y,food.type==="apple"?"#ef4444":"#facc15");
+food=randomFood();
+if(score%5===0)spawnObstacle();
+clearInterval(game);speed*=0.97;game=setInterval(draw, slowActive?speed*1.8:speed);
+}else{snake.pop()}
+
+const newHead={x:headX,y:headY};
+if(snake.some(s=>s.x===newHead.x&&s.y===newHead.y))return endGame();
+snake.unshift(newHead);
+
+ drawParticles();
+}
+
+function endGame(){clearInterval(game);if(powerupTimer)clearInterval(powerupTimer);playBeep(120,0.4);document.body.classList.add("shake");setTimeout(()=>document.body.classList.remove("shake"),200);
+if(score>highScore){highScore=score;localStorage.setItem("snakeHighScore",highScore)}
+document.getElementById("finalScore").innerText=score;document.getElementById("highScoreEnd").innerText=highScore;document.getElementById("highScore").innerText=highScore;document.getElementById("gameOverScreen").style.display="block"}
+</script>
+
+</body>
+</html>

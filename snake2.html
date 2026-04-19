@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Game</title>
+<style>
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        background: linear-gradient(135deg, #0f172a, #1e293b);
+        color: white;
+        font-family: 'Segoe UI', sans-serif;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    canvas {
+        background: #020617;
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+
+    #score {
+        margin-bottom: 12px;
+        font-size: 22px;
+        font-weight: 600;
+    }
+
+    .overlay {
+        position: absolute;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 30px;
+        border-radius: 20px;
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+    }
+
+    button {
+        margin-top: 15px;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 10px;
+        background: #22c55e;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        background: #16a34a;
+        transform: scale(1.05);
+    }
+
+    .shake {
+        animation: shake 0.2s;
+    }
+
+    @keyframes shake {
+        0% { transform: translate(2px, 2px); }
+        25% { transform: translate(-2px, 2px); }
+        50% { transform: translate(2px, -2px); }
+        75% { transform: translate(-2px, -2px); }
+        100% { transform: translate(0, 0); }
+    }
+</style>
+</head>
+<body>
+
+<div id="score">Score: 0</div>
+<canvas id="game" width="400" height="400"></canvas>
+
+<div id="startScreen" class="overlay">
+    <h2>Snake Game</h2>
+    <p>High Score: <span id="highScore">0</span></p>
+    <button onclick="startGame()">Start Game</button>
+</div>
+
+<div id="gameOverScreen" class="overlay" style="display:none;">
+    <h2>Game Over</h2>
+    <p>Your Score: <span id="finalScore"></span></p>
+    <p>High Score: <span id="highScoreEnd"></span></p>
+    <button onclick="restartGame()">Play Again</button>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const box = 20;
+
+let snake, direction, food, score, game, obstacles;
+let lastInput = direction;
+
+// SOUND
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playBeep(freq, duration) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = freq;
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+let highScore = localStorage.getItem("snakeHighScore") || 0;
+document.getElementById("highScore").innerText = highScore;
+
+function init() {
+    snake = [{ x: 200, y: 200 }];
+    direction = "RIGHT";
+    food = randomFood();
+    obstacles = [];
+    score = 0;
+    document.getElementById("score").innerText = "Score: 0";
+}
+
+function startGame() {
+    document.getElementById("startScreen").style.display = "none";
+    init();
+    game = setInterval(draw, 90);
+}
+
+function restartGame() {
+    document.getElementById("gameOverScreen").style.display = "none";
+    startGame();
+}
+
+function randomFood() {
+    return {
+        x: Math.floor(Math.random() * (canvas.width / box)) * box,
+        y: Math.floor(Math.random() * (canvas.height / box)) * box
+    };
+}
+
+function spawnObstacle() {
+    obstacles.push({
+        x: Math.floor(Math.random() * (canvas.width / box)) * box,
+        y: Math.floor(Math.random() * (canvas.height / box)) * box
+    });
+}
+
+// INPUT (no lag fix)
+document.addEventListener("keydown", e => {
+    const key = e.keyCode;
+    if (key === 37 && direction !== "RIGHT") direction = "LEFT";
+    else if (key === 38 && direction !== "DOWN") direction = "UP";
+    else if (key === 39 && direction !== "LEFT") direction = "RIGHT";
+    else if (key === 40 && direction !== "UP") direction = "DOWN";
+});
+
+let pulse = 0;
+
+function draw() {
+    pulse += 0.1;
+
+    ctx.fillStyle = "#020617";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // FOOD PULSE
+    ctx.fillStyle = "#ef4444";
+    ctx.beginPath();
+    let size = (box/2 - 2) + Math.sin(pulse) * 2;
+    ctx.arc(food.x + box/2, food.y + box/2, size, 0, Math.PI * 2);
+    ctx.fill();
+
+    // OBSTACLES
+    ctx.fillStyle = "#64748b";
+    obstacles.forEach(o => {
+        ctx.fillRect(o.x, o.y, box, box);
+    });
+
+    // SNAKE
+    snake.forEach((seg, i) => {
+        ctx.fillStyle = i === 0 ? "#4ade80" : "#22c55e";
+        ctx.beginPath();
+        let size = i === 0 ? box : box - 2;
+        ctx.roundRect(seg.x, seg.y, size, size, 6);
+        ctx.fill();
+    });
+
+    let headX = snake[0].x;
+    let headY = snake[0].y;
+
+    if (direction === "LEFT") headX -= box;
+    if (direction === "UP") headY -= box;
+    if (direction === "RIGHT") headX += box;
+    if (direction === "DOWN") headY += box;
+
+    // WALL
+    if (headX < 0 || headY < 0 || headX >= canvas.width || headY >= canvas.height) return endGame();
+
+    // OBSTACLE COLLISION
+    if (obstacles.some(o => o.x === headX && o.y === headY)) return endGame();
+
+    // FOOD
+    if (headX === food.x && headY === food.y) {
+        score++;
+        playBeep(400, 0.1);
+        document.getElementById("score").innerText = "Score: " + score;
+        food = randomFood();
+
+        if (score % 5 === 0) spawnObstacle();
+    } else {
+        snake.pop();
+    }
+
+    const newHead = { x: headX, y: headY };
+
+    // SELF COLLISION
+    if (snake.some(s => s.x === newHead.x && s.y === newHead.y)) return endGame();
+
+    snake.unshift(newHead);
+}
+
+function endGame() {
+    clearInterval(game);
+
+    playBeep(120, 0.4);
+    document.body.classList.add("shake");
+    setTimeout(() => document.body.classList.remove("shake"), 200);
+
+    if (score > highScore) {
+        highScore = score;
+        localStorage.setItem("snakeHighScore", highScore);
+    }
+
+    document.getElementById("finalScore").innerText = score;
+    document.getElementById("highScoreEnd").innerText = highScore;
+    document.getElementById("highScore").innerText = highScore;
+
+    document.getElementById("gameOverScreen").style.display = "block";
+}
+</script>
+
+</body>
+</html>
